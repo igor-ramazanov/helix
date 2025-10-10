@@ -22,15 +22,26 @@ use crate::Editor;
 pub enum Variable {
     /// The one-indexed line number of the primary cursor in the currently focused document.
     CursorLine,
+    /// The zero-indexed line number of the primary cursor in the currently focused document.
+    CursorLineLsp,
     /// The one-indexed column number of the primary cursor in the currently focused document.
     ///
     /// Note that this is the count of grapheme clusters from the start of the line (regardless of
     /// softwrap) - the same as the `position` element in the statusline.
     CursorColumn,
+    /// The zero-indexed column number of the primary cursor in the currently focused document.
+    ///
+    /// Note that this is the count of grapheme clusters from the start of the line (regardless of
+    /// softwrap) - the same as the `position` element in the statusline.
+    CursorColumnLsp,
     /// The display name of the currently focused document.
     ///
     /// This corresponds to `crate::Document::display_name`.
     BufferName,
+    /// The absolute path of the currently focused document.
+    ///
+    /// This corresponds to `crate::Document::path`.
+    BufferNameAbsolute,
     /// A string containing the line-ending of the currently focused document.
     LineEnding,
     /// Curreng working directory
@@ -50,8 +61,11 @@ pub enum Variable {
 impl Variable {
     pub const VARIANTS: &'static [Self] = &[
         Self::CursorLine,
+        Self::CursorLineLsp,
         Self::CursorColumn,
+        Self::CursorColumnLsp,
         Self::BufferName,
+        Self::BufferNameAbsolute,
         Self::LineEnding,
         Self::CurrentWorkingDirectory,
         Self::WorkspaceDirectory,
@@ -64,8 +78,11 @@ impl Variable {
     pub const fn as_str(&self) -> &'static str {
         match self {
             Self::CursorLine => "cursor_line",
+            Self::CursorLineLsp => "cursor_line_lsp",
             Self::CursorColumn => "cursor_column",
+            Self::CursorColumnLsp => "cursor_column_lsp",
             Self::BufferName => "buffer_name",
+            Self::BufferNameAbsolute => "buffer_name_absolute",
             Self::LineEnding => "line_ending",
             Self::CurrentWorkingDirectory => "current_working_directory",
             Self::WorkspaceDirectory => "workspace_directory",
@@ -79,8 +96,11 @@ impl Variable {
     pub fn from_name(s: &str) -> Option<Self> {
         match s {
             "cursor_line" => Some(Self::CursorLine),
+            "cursor_line_lsp" => Some(Self::CursorLineLsp),
             "cursor_column" => Some(Self::CursorColumn),
+            "cursor_column_lsp" => Some(Self::CursorColumnLsp),
             "buffer_name" => Some(Self::BufferName),
+            "buffer_name_absolute" => Some(Self::BufferNameAbsolute),
             "line_ending" => Some(Self::LineEnding),
             "workspace_directory" => Some(Self::WorkspaceDirectory),
             "current_working_directory" => Some(Self::CurrentWorkingDirectory),
@@ -230,15 +250,31 @@ fn expand_variable(editor: &Editor, variable: Variable) -> Result<Cow<'static, s
             let cursor_line = doc.selection(view.id).primary().cursor_line(text);
             Ok(Cow::Owned((cursor_line + 1).to_string()))
         }
+        Variable::CursorLineLsp => {
+            let cursor_line = doc.selection(view.id).primary().cursor_line(text);
+            Ok(Cow::Owned(cursor_line.to_string()))
+        }
         Variable::CursorColumn => {
             let cursor = doc.selection(view.id).primary().cursor(text);
             let position = helix_core::coords_at_pos(text, cursor);
             Ok(Cow::Owned((position.col + 1).to_string()))
         }
+        Variable::CursorColumnLsp => {
+            let cursor = doc.selection(view.id).primary().cursor(text);
+            let position = helix_core::coords_at_pos(text, cursor);
+            Ok(Cow::Owned(position.col.to_string()))
+        }
         Variable::BufferName => {
             // Note: usually we would use `Document::display_name` but we can statically borrow
             // the scratch buffer name by partially reimplementing `display_name`.
             if let Some(path) = doc.relative_path() {
+                Ok(Cow::Owned(path.to_string_lossy().into_owned()))
+            } else {
+                Ok(Cow::Borrowed(crate::document::SCRATCH_BUFFER_NAME))
+            }
+        }
+        Variable::BufferNameAbsolute => {
+            if let Some(path) = doc.path() {
                 Ok(Cow::Owned(path.to_string_lossy().into_owned()))
             } else {
                 Ok(Cow::Borrowed(crate::document::SCRATCH_BUFFER_NAME))
